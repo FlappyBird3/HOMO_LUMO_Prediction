@@ -1,0 +1,10 @@
+gnn/
+venv/
+.venv/
+data/
+*.pt
+train.log
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
