@@ -15,7 +15,7 @@ QM9 stores hydrogens as explicit atoms, so Chem.AddHs is required before any
 feature is read. Skipping it changes the atom count and produces a different
 graph.
 """
-
+from rdkit.Chem import AllChem
 import torch
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType, HybridizationType
@@ -77,7 +77,7 @@ def parse_smiles(smiles):
 
     mol = Chem.AddHs(mol)      # QM9 has explicit hydrogens
     Chem.Kekulize(mol, clearAromaticFlags=True)
-    
+
     if mol.GetNumAtoms() < 2:
         raise InvalidMolecule("Needs at least two atoms.")
 
@@ -134,12 +134,24 @@ def smiles_to_data(smiles):
 
 
 def describe(mol):
-    """Human-readable structure for the frontend to display."""
-    symbols = [a.GetSymbol() for a in mol.GetAtoms()]
+    """Structure plus 2D layout coordinates for the frontend to draw."""
+
+    AllChem.Compute2DCoords(mol)          # RDKit lays out the molecule
+    conf = mol.GetConformer()
+
+    atoms = []
+    for i, atom in enumerate(mol.GetAtoms()):
+        p = conf.GetAtomPosition(i)
+        atoms.append({
+            "index": i,
+            "element": atom.GetSymbol(),
+            "x": round(p.x, 4),
+            "y": round(p.y, 4),
+        })
 
     counts = {}
-    for s in symbols:
-        counts[s] = counts.get(s, 0) + 1
+    for a in atoms:
+        counts[a["element"]] = counts.get(a["element"], 0) + 1
     formula = "".join(
         el + (str(counts[el]) if counts[el] > 1 else "")
         for el in ["C", "H", "N", "O", "F"]
@@ -148,24 +160,20 @@ def describe(mol):
 
     bonds = []
     for bond in mol.GetBonds():
-        i = bond.GetBeginAtomIdx()
-        j = bond.GetEndAtomIdx()
-        bonds.append(
-            {
-                "source": i,
-                "target": j,
-                "order": str(bond.GetBondType()).lower(),
-            }
-        )
+        bonds.append({
+            "source": bond.GetBeginAtomIdx(),
+            "target": bond.GetEndAtomIdx(),
+            "order": str(bond.GetBondType()).lower(),
+        })
 
     n_atoms = mol.GetNumAtoms()
     n_bonds = mol.GetNumBonds()
 
     return {
         "formula": formula,
-        "atoms": [{"index": i, "element": s} for i, s in enumerate(symbols)],
+        "atoms": atoms,
         "bonds": bonds,
         "num_atoms": n_atoms,
         "num_bonds": n_bonds,
-        "num_rings": n_bonds - n_atoms + 1,     # connected graph
+        "num_rings": n_bonds - n_atoms + 1,
     }
